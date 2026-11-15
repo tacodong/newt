@@ -49,8 +49,15 @@ func splitDomainHostPort(domain string) (host, port string, literalIP net.IP) {
 // works even then. See https://github.com/fosrl/android/issues/42 and
 // https://github.com/fosrl/pangolin/issues/3471.
 func resolveIPs(host string, publicDNS []string) ([]net.IP, error) {
+	return resolveIPsContext(context.Background(), host, publicDNS)
+}
+
+func resolveIPsContext(ctx context.Context, host string, publicDNS []string) ([]net.IP, error) {
+	if err := ctx.Err(); err != nil {
+		return nil, err
+	}
 	if len(publicDNS) == 0 {
-		return net.LookupIP(host)
+		return net.DefaultResolver.LookupIP(ctx, "ip", host)
 	}
 
 	var lastErr error
@@ -69,14 +76,17 @@ func resolveIPs(host string, publicDNS []string) ([]net.IP, error) {
 				return d.DialContext(ctx, "udp", dnsAddr)
 			},
 		}
-		ips, err := resolver.LookupIP(context.Background(), "ip", host)
+		ips, err := resolver.LookupIP(ctx, "ip", host)
 		if err == nil {
 			return ips, nil
+		}
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
 		}
 		lastErr = err
 	}
 
-	if ips, err := net.LookupIP(host); err == nil {
+	if ips, err := net.DefaultResolver.LookupIP(ctx, "ip", host); err == nil {
 		logger.Debug("All upstream DNS servers failed to resolve %s (%v), falling back to platform resolver", host, lastErr)
 		return ips, nil
 	}
@@ -100,6 +110,18 @@ func pickAddr(ips []net.IP) string {
 }
 
 func ResolveDomainUpstream(domain string, publicDNS []string) (string, error) {
+	return resolveDomainContext(context.Background(), domain, publicDNS)
+}
+
+// ResolveDomainContext preserves endpoint resolution while allowing shutdown cancellation.
+func ResolveDomainContext(ctx context.Context, domain string) (string, error) {
+	return resolveDomainContext(ctx, domain, nil)
+}
+
+func resolveDomainContext(ctx context.Context, domain string, publicDNS []string) (string, error) {
+	if err := ctx.Err(); err != nil {
+		return "", err
+	}
 	host, port, literalIP := splitDomainHostPort(domain)
 	if literalIP != nil {
 		if port != "" {
@@ -108,7 +130,7 @@ func ResolveDomainUpstream(domain string, publicDNS []string) (string, error) {
 		return literalIP.String(), nil
 	}
 
-	ips, err := resolveIPs(host, publicDNS)
+	ips, err := resolveIPsContext(ctx, host, publicDNS)
 	if err != nil {
 		return "", err
 	}
