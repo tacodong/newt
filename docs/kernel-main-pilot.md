@@ -1,7 +1,9 @@
 # Kernel-main port for isolated ARM64 evaluation
 
 Owner-requested prototype under Homelab outcome164. No production rollout or
-default-backend change is authorized by this branch.
+default-backend change is authorized by this branch. The contribution PR targets
+the explicit `codex/newt-1.20-base` release line; default main and its later
+dependency updates remain unchanged.
 
 ## Source and review
 
