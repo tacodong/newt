@@ -5,6 +5,36 @@ was tested against released native-main on November15,2026 under Homelab
 outcome164. This was a separate Community1.26/Gerbil1.6/Traefik3.7.16 deployment;
 no production connector, Enterprise database or license was changed.
 
+## Source and review
+
+
+The source is [upstream PR450](https://github.com/fosrl/newt/pull/450), frozen at
+`220f19e0192066d5348f16f3951ecb45432b7291`, merged onto the1.20 release code.
+Its actual merge base is `f6a4be0137bd6d1237e7c1bec68bfe0a297326fb`;
+the release has32 upstream commits absent from that feature branch. This port
+retains1.20's SSH session logging, client behavior and DNS address-family/upstream
+fallback handling, and adds cancellation through that shared resolver path.
+Runtime module versions remain pinned to1.20; kernel-adapter dependencies are
+resolved through Go's normal module/checksum mechanism. Later upstream CI updates
+are retained, with no release-tag or mirror workflow dispatch.
+
+What this change does: the opt-in kernel-main path creates an exclusively owned
+Linux WireGuard interface through netlink/wgctrl. Newt continues to run the
+control connection and application proxies; released userspace/native-TUN modes
+remain available. Interface aliases/index checks, protected control/endpoint
+addresses, exclusive route additions and partial-failure rollback bound ownership.
+
+The caller review covers connect/sync/subnet updates, ping/reconnect, shutdown,
+native proxy listeners, browser gateway setup and configuration precedence.
+Directly importing the old branch would lose released SSH-log wiring and DNS
+fallback behavior; those port conflicts are resolved here. No source-visible
+blocker was identified for an isolated opt-in evaluation. This is not a claim
+of production readiness or complete network-failure coverage.
+
+The [upstream limits](kernel-main.md) remain: Linux only, IPv4 inner addresses and non-default IPv4 remote routes, unscoped outer endpoints, exclusive interface ownership and no silent fallback.
+
+## Measured result
+
 | Backend | HTTP GET | HTTP POST |
 | --- | ---: | ---: |
 | Released1.20 native-main | 1.257Gb/s | 1.382Gb/s |
@@ -25,7 +55,9 @@ passed. Connector restart regenerated the key and preserved default and host
 routes. A Community control-plane restart recovered transport and target health.
 Backend stop/start produced healthy→unhealthy→healthy. An immediate HTTP request
 failed after the health API became healthy; fresh proxy readiness followed by a
-complete HTTP/UDP check passed. API health alone does not prove route convergence.
+complete HTTP/UDP check passed. API health alone does not prove route convergence. Graceful connector stop removed
+the owned kernel interface while a temporary namespace keeper preserved the
+network namespace for direct inspection; the keeper was then released.
 
 Newt cgroup usage fell from56.1→6.6 core-seconds on GET and75.4→19.1 on POST.
 This is not a total CPU saving claim: kernel work is not fully charged to that
